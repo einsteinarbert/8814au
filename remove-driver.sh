@@ -117,9 +117,8 @@ fi
 if command -v dkms >/dev/null 2>&1; then
 	echo "Removing a dkms installation."
 	# Remove all installed versions for this module to prevent stale dkms entries.
-	dkms status | awk -F, -v drv="${DRV_NAME}" '$1 ~ "^"drv"/" {print $1}' | while read -r modver
+	dkms status | grep "^${DRV_NAME}/" | awk -F'[/, :]+' '{print $2}' | while read -r ver
 	do
-		ver="${modver#${DRV_NAME}/}"
 		if [ -n "${ver}" ]; then
 			dkms remove -m ${DRV_NAME} -v "${ver}" --all >/dev/null 2>&1 || true
 			echo "${DRV_NAME}/${ver} has been removed"

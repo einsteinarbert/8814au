@@ -253,9 +253,8 @@ if command -v dkms >/dev/null 2>&1; then
 		echo ": ---------------------------"
 		echo
 		echo "Removing existing dkms installations for ${DRV_NAME}."
-		dkms status | awk -F, -v drv="${DRV_NAME}" '$1 ~ "^"drv"/" {print $1}' | while read -r modver
+		dkms status | grep "^${DRV_NAME}/" | awk -F'[/, :]+' '{print $2}' | while read -r ver
 		do
-			ver="${modver#${DRV_NAME}/}"
 			if [ -n "${ver}" ]; then
 				dkms remove -m ${DRV_NAME} -v "${ver}" --all >/dev/null 2>&1 || true
 			fi
