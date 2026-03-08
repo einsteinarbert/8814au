@@ -40,8 +40,7 @@
 
 /* 5G chan 36 - chan 165 */
 #define RTW_5GHZ_5150_5850	\
-	REG_RULE(5150-10, 5850+10, 40, 0, 30,	\
-		 NL80211_RRF_PASSIVE_SCAN | NL80211_RRF_NO_IBSS)
+	REG_RULE(5150-10, 5850+10, 80, 0, 30, 0)
 
 static const struct ieee80211_regdomain rtw_regdom_rd = {
 	.n_reg_rules = 3,
@@ -298,7 +297,7 @@ void rtw_regd_apply_flags(struct wiphy *wiphy)
 			#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 14, 0))
 			ch->flags = (IEEE80211_CHAN_NO_IBSS | IEEE80211_CHAN_PASSIVE_SCAN);
 			#else
-			ch->flags = IEEE80211_CHAN_NO_IR;
+			ch->flags = 0;
 			#endif
 		} else
 			ch->flags = 0;
