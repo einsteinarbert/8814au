@@ -3892,12 +3892,39 @@ static sint fill_radiotap_hdr(_adapter *padapter, union recv_frame *precvframe, 
 	struct ieee80211_radiotap_header *rtap_hdr = NULL;
 	u8 *ptr = NULL;
 
-	u8 hdr_buf[64] = {0};
+	u8 hdr_buf[128] = {0};
 	u16 rt_len = 8;
+	int path_idx;
+	int num_paths = GET_HAL_RFPATH_NUM(padapter);
+	int active_paths[4];
+	int num_active_paths = 0;
+
+	/* Find valid active paths (signal < 0 and > -110) */
+	for (path_idx = 0; path_idx < num_paths && path_idx < 4; path_idx++) {
+		if (pattrib->phy_info.rx_pwr[path_idx] < 0 && pattrib->phy_info.rx_pwr[path_idx] > -110) {
+			active_paths[num_active_paths++] = path_idx;
+		}
+	}
 
 	/* create header */
 	rtap_hdr = (struct ieee80211_radiotap_header *)&hdr_buf[0];
 	rtap_hdr->it_version = PKTHDR_RADIOTAP_VERSION;
+
+	/* Insert extra bitmaps for multi-antenna if needed */
+	if (num_active_paths > 0) {
+		u32 *extra_bitmaps = (u32 *)&hdr_buf[rt_len];
+		rtap_hdr->it_present |= (1 << 29); /* RADIOTAP_NAMESPACE */
+		rtap_hdr->it_present |= (1 << 31); /* RADIOTAP_EXT */
+		rt_len += (num_active_paths * 4);
+		for (path_idx = 0; path_idx < num_active_paths; path_idx++) {
+			u32 bm = (1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL) | (1 << IEEE80211_RADIOTAP_ANTENNA);
+			if (path_idx < num_active_paths - 1) {
+				bm |= (1 << 29);
+				bm |= (1 << 31);
+			}
+			extra_bitmaps[path_idx] = cpu_to_le32(bm);
+		}
+	}
 
 	/* tsft */
 	if (pattrib->tsfl) {
@@ -3995,35 +4022,7 @@ static sint fill_radiotap_hdr(_adapter *padapter, union recv_frame *precvframe, 
 	memcpy(&hdr_buf[rt_len], &tmp_16bit, 2);
 	rt_len += 2;
 
-	/* dBm Antenna Signal (adapter-level: best/overall RSSI) */
-	rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL);
-	hdr_buf[rt_len] = pattrib->phy_info.recv_signal_power;
-	rt_len += 1;
 
-	/* Antenna index 0 (adapter-level) */
-	rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_ANTENNA);
-	hdr_buf[rt_len] = 0;
-	rt_len += 1;
-
-	/* Per-antenna RSSI for active paths */
-	{
-		int path;
-		int num_paths = GET_HAL_RFPATH_NUM(padapter);
-		for (path = 0; path < num_paths; path++) {
-			/* Check if path is valid/active */
-			if (pattrib->phy_info.rx_pwr[path] != 0) {
-				/* Report signal */
-				rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL);
-				hdr_buf[rt_len] = pattrib->phy_info.rx_pwr[path];
-				rt_len += 1;
-
-				/* Report antenna index */
-				rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_ANTENNA);
-				hdr_buf[rt_len] = path;
-				rt_len += 1;
-			}
-		}
-	}
 
 	/* RX flags */
 	rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_RX_FLAGS);
@@ -4128,6 +4127,25 @@ static sint fill_radiotap_hdr(_adapter *padapter, union recv_frame *precvframe, 
 		tmp_16bit = 0;
 		memcpy(&hdr_buf[rt_len], &tmp_16bit, 2);
 		rt_len += 2;
+	}
+
+	/* dBm Antenna Signal (adapter-level: best/overall RSSI) */
+	rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_DBM_ANTSIGNAL);
+	hdr_buf[rt_len] = pattrib->phy_info.recv_signal_power;
+	rt_len += 1;
+
+	/* Antenna index 0 (adapter-level) */
+	rtap_hdr->it_present |= (1 << IEEE80211_RADIOTAP_ANTENNA);
+	hdr_buf[rt_len] = 0;
+	rt_len += 1;
+
+	/* Per-antenna RSSI for active paths (appended at the very end of radiotap data) */
+	for (path_idx = 0; path_idx < num_active_paths; path_idx++) {
+		int path = active_paths[path_idx];
+		hdr_buf[rt_len] = pattrib->phy_info.rx_pwr[path];
+		rt_len += 1;
+		hdr_buf[rt_len] = path;
+		rt_len += 1;
 	}
 
 	/* push to skb */
